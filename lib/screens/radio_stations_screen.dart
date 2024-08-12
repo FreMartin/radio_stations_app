@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
+import 'package:go_router/go_router.dart';
 import 'package:radio_app/infraestructure/models/radio_stations_model.dart';
 import 'package:provider/provider.dart';
 
@@ -7,6 +8,8 @@ import 'package:provider/provider.dart';
 class RadioStationsScreen extends StatelessWidget {
 
   final TextEditingController _controller = TextEditingController();
+
+  RadioStationsScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -20,22 +23,12 @@ class RadioStationsScreen extends StatelessWidget {
         children: [
           Padding(
             padding: const EdgeInsets.all(16.0),
-            child: TextField(
-              controller: _controller,
-              decoration: InputDecoration(
-              hintText: 'Buscar',
-              suffixIcon:  IconButton(
-                icon: const Icon(Icons.search),
-                onPressed: () {
-                  provider.fetchRadioStations(_controller.text);
-                },),
-              
-              border: const OutlineInputBorder(
-                borderRadius: BorderRadius.all(Radius.circular(25.0)),
+            child: CustomInputTextField(
+              controller: _controller, 
+              provider: provider
               ),
-            ),
-            ),
           ),
+          const SizedBox(height: 15,),
           provider.isLoading
             ? const CircularProgressIndicator()
             : Expanded(
@@ -45,17 +38,7 @@ class RadioStationsScreen extends StatelessWidget {
                       itemCount: provider.stations.length,
                       itemBuilder: (context, index) {
                         final station = provider.stations[index];
-                        debugPrint('Station: ${station.name}'); // Log de depuración
-                        return ListTile(
-                          leading: station.favicon.isNotEmpty 
-                            ? Image.network(station.favicon, width: 50, height: 50, fit: BoxFit.cover)
-                            : null,// Image.asset('assets/images/radio_default.jpg',width: 50, height: 50, fit: BoxFit.cover),
-                          title: Text(station.name),
-                          subtitle: Text('${station.country} - ${station.urlResolved}'),
-                          onTap: () {
-                            // Acciones al seleccionar una estación
-                          },
-                        );
+                        return CustomCardItem(station: station);
                       },
                     ),
             ),
@@ -65,9 +48,80 @@ class RadioStationsScreen extends StatelessWidget {
   }
 }
 
+class CustomCardItem extends StatelessWidget {
+  const CustomCardItem({
+    super.key,
+    required this.station,
+  });
+
+  final RadioStationsModel station;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 3,
+      child: ListTile(
+        leading: station.favicon.isNotEmpty 
+          ? Image.network(station.favicon, width: 50, height: 50, fit: BoxFit.cover)
+          : Image.asset('assets/images/radio_detail.png',width: 50, height: 50, fit: BoxFit.cover),
+        title: Text(station.name,
+        overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            color: Color.fromARGB(255, 6, 83, 147),
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        subtitle: Text('From ${station.country}',
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            fontStyle: FontStyle.italic
+          ),
+        ),
+        onTap: () {
+          context.push('/station', extra: station);
+        },
+      ),
+    );
+  }
+}
+
+class CustomInputTextField extends StatelessWidget {
+  const CustomInputTextField({
+    super.key,
+    required TextEditingController controller,
+    required this.provider,
+  }) : _controller = controller;
+
+  final TextEditingController _controller;
+  final RadioStationProvider provider;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: _controller,
+      decoration: InputDecoration(
+      hintText: 'Type the genre',
+      suffixIcon:  IconButton(
+        icon: const Icon(Icons.search),
+        iconSize: 40,
+        onPressed: () {
+          provider.fetchRadioStations(_controller.text);
+        },
+        ),
+      
+      border: const OutlineInputBorder(
+        borderRadius: BorderRadius.all(Radius.circular(25.0)),
+      ),
+    ),
+    );
+  }
+}
+
 class RadioStationProvider with ChangeNotifier {
   List<RadioStationsModel> _stations = [];
   bool _isLoading = false;
+  final int maxParallelRequests = 10;
+  final int stationLimit = 100; // Límite máximo de estaciones a recibir
 
   List<RadioStationsModel> get stations => _stations;
   bool get isLoading => _isLoading;
@@ -77,11 +131,19 @@ class RadioStationProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      var response = await Dio().get('https://de1.api.radio-browser.info/json/stations/search', queryParameters: {'tag': genre});
+      var response = await Dio().get(
+        'https://de1.api.radio-browser.info/json/stations/search',
+        queryParameters: {
+          'tag': genre,
+          'limit': stationLimit // Limitar a 100 estaciones
+        },
+      );
+
       if (response.statusCode == 200) {
         List jsonResponse = response.data;
-        _stations = jsonResponse.map((station) => RadioStationsModel.fromJson(station)).toList();
-        print('Number of stations fetched: ${_stations.length}'); // Log de depuración
+
+        // Validar URLs de las estaciones en paralelo con un límite
+        _stations = await _validateStationsInParallel(jsonResponse);
       } else {
         throw Exception('Failed to load radio stations');
       }
@@ -92,25 +154,43 @@ class RadioStationProvider with ChangeNotifier {
     _isLoading = false;
     notifyListeners();
   }
-}
 
+  Future<List<RadioStationsModel>> _validateStationsInParallel(List<dynamic> jsonResponse) async {
+    List<RadioStationsModel> validStations = [];
 
+    for (int i = 0; i < jsonResponse.length; i += maxParallelRequests) {
+      var chunk = jsonResponse.skip(i).take(maxParallelRequests).toList();
 
+      List<Future<RadioStationsModel?>> futures = chunk.map((stationJson) async {
+        RadioStationsModel station = RadioStationsModel.fromJson(stationJson);
+        bool isValid = await _isValidStreamUrl(station.urlResolved);
+        return isValid ? station : null;
+      }).toList();
 
-class SearchButton extends StatelessWidget {
-  final VoidCallback onPressed;
+      List<RadioStationsModel?> results = await Future.wait(futures);
+      validStations.addAll(results.whereType<RadioStationsModel>());
+    }
 
-  SearchButton({required this.onPressed});
+    return validStations;
+  }
 
-  @override
-  Widget build(BuildContext context) {
-    return ElevatedButton(
-      onPressed: onPressed,
-      child: const Text('Search'),
-    );
+  Future<bool> _isValidStreamUrl(String url) async {
+    try {
+      var dio = Dio();
+      final response = await dio.head(url);
+      if (response.statusCode == 200) {
+        final contentType = response.headers['content-type']?.first;
+        if (contentType != null && 
+            (contentType.contains('audio/mpeg') || contentType.contains('audio/aacp'))) {
+          return true;
+        }
+      }
+    } catch (e) {
+      print('Error al verificar la URL: $e');
+    }
+    return false;
   }
 }
-
 
 
 

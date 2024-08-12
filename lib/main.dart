@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:radio_app/config/router/appRouter.dart';
 import 'package:radio_app/screens/radio_stations_screen.dart';
 
 //import 'package:radio_app/widgets/player/audio_player_radio.dart';
@@ -21,10 +22,11 @@ class MyApp extends StatelessWidget {
  
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Radio App',
+    return MaterialApp.router(
+      routerConfig: appRouter,
+      //routerDelegate: appRouter.routerDelegate,
+      //routeInformationParser: appRouter.routeInformationParser,
       debugShowCheckedModeBanner: false,
-      home: RadioStationsScreen(),
     );
   }
 }
