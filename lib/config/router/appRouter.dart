@@ -1,8 +1,8 @@
 
 import 'package:go_router/go_router.dart';
 import 'package:radio_app/infraestructure/models/radio_stations_model.dart';
-import 'package:radio_app/screens/radio_stations_screen.dart';
-import 'package:radio_app/widgets/player/station_screen.dart';
+import 'package:radio_app/presentation/screens/radio_stations_screen.dart';
+import 'package:radio_app/presentation/screens/station_screen.dart';
 
 final appRouter = GoRouter(
   initialLocation: '/',
