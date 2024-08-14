@@ -35,7 +35,7 @@ class RadioStationsScreen extends StatelessWidget {
               provider: provider
               ),
           ),
-          const SizedBox(height: 15,),
+          const SizedBox(height: 10,),
           provider.isLoading
             ? const CircularProgressIndicator()
             : Expanded(

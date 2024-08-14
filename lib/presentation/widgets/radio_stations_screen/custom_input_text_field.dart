@@ -24,6 +24,7 @@ class CustomInputTextField extends StatelessWidget {
           onPressed: () {
             if (_controller.text.isEmpty) return;     // No realiza ninguna accion si no se ingresa ningun genero musical
             provider.fetchRadioStations(_controller.text);
+            FocusScope.of(context).unfocus(); // oculta teclado
           },
         ),
      
@@ -31,7 +32,7 @@ class CustomInputTextField extends StatelessWidget {
           borderRadius: BorderRadius.all(Radius.circular(25.0)),
         ),
       ),
-      onSubmitted: (value){
+      onSubmitted: (value){        // Asigna la misma funcion del boton buscar al boton enter del teclado
         if (_controller.text.isEmpty) return; 
         provider.fetchRadioStations(_controller.text);
         FocusScope.of(context).unfocus();
